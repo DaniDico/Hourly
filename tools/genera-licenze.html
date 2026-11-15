@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="it"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Hourly - Generatore di licenze</title>
+<style>
+body{font:16px/1.45 system-ui,sans-serif;max-width:760px;margin:0 auto;padding:20px;background:#f1f3f0;color:#16231f}
+h1{margin:0 0 4px}h2{margin:0 0 8px;font-size:18px}
+.c{background:#fff;border:1px solid #dce1dc;border-radius:14px;padding:16px;margin:14px 0}
+label{display:block;font-size:14px;color:#66756f;margin:10px 0 4px}
+input,textarea{width:100%;padding:10px;border:1px solid #cfd6d1;border-radius:10px;font:inherit;box-sizing:border-box}
+textarea{font:12px ui-monospace,monospace;min-height:90px;word-break:break-all}
+button{padding:11px 16px;border:0;border-radius:10px;background:#0f7b6c;color:#fff;font:inherit;font-weight:600;cursor:pointer;margin:10px 8px 0 0}
+button.s{background:#fff;color:#16231f;border:1px solid #cfd6d1}
+.w{background:#fff4e5;border:1px solid #f0c27a;border-radius:10px;padding:10px;font-size:14px}
+table{width:100%;border-collapse:collapse;font-size:13px}td,th{text-align:left;padding:6px;border-top:1px solid #e4e7e3}
+.row{display:flex;gap:10px}.row>div{flex:1}
+</style></head><body>
+<h1>Hourly - Generatore di licenze</h1>
+<p class="w"><b>Uso riservato all'autore.</b> Apri questa pagina dal tuo computer (file salvato in locale), non da internet. La chiave privata non deve mai finire nel repository né essere condivisa. Tutto avviene nel tuo browser: nessun dato viene inviato altrove.</p>
+
+<div class="c"><h2>1. Chiavi dell'autore (una volta sola)</h2>
+<button id="gk">Genera nuova coppia di chiavi</button>
+<label>Chiave PUBBLICA - da incollare in js/config.js (window.HLY_PUB=...;)</label><textarea id="pub" readonly></textarea>
+<button class="s" id="cpub">Copia chiave pubblica</button><button class="s" id="dpriv">Scarica chiave privata</button>
+<p class="w">Se generi di nuovo le chiavi, tutte le licenze emesse in precedenza smettono di funzionare. Conserva il file della chiave privata in un posto sicuro, con un backup: senza non puoi più emettere né rinnovare licenze.</p></div>
+
+<div class="c"><h2>2. Crea o rinnova una licenza</h2>
+<label>Chiave privata (file .json) oppure incollala qui sotto</label><input type="file" id="kf" accept=".json"><textarea id="kt" placeholder='{"kty":"EC",...,"d":"..."}' style="min-height:60px"></textarea>
+<div class="row"><div><label>Nome azienda</label><input id="nm" maxlength="60"></div><div><label>Dipendenti massimi</label><input id="mx" type="number" min="1" value="10"></div></div>
+<div class="row"><div><label>Scadenza</label><input id="ex" type="date"></div><div><label>&nbsp;</label><label style="margin:0"><input id="nx" type="checkbox" style="width:auto"> Senza scadenza</label></div></div>
+<label>Rinnovo: incolla la licenza precedente per mantenere gli stessi dipendenti collegati (facoltativo)</label><textarea id="old" placeholder="HLY1..." style="min-height:60px"></textarea>
+<button id="mk">Genera codice di licenza</button>
+<label>Codice di licenza (da consegnare all'azienda)</label><textarea id="out" readonly></textarea>
+<button class="s" id="cout">Copia codice</button></div>
+
+<div class="c"><h2>Registro licenze emesse (su questo browser)</h2><table id="log"></table>
+<button class="s" id="exl">Esporta registro</button></div>
+<script>
+const $=i=>document.getElementById(i),TE=new TextEncoder(),TD=new TextDecoder();
+const b64=u=>btoa(String.fromCharCode(...u)).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");
+const unb=s=>{s=s.replace(/-/g,"+").replace(/_/g,"/");while(s.length%4)s+="=";return Uint8Array.from(atob(s),c=>c.charCodeAt(0))};
+const EC={name:"ECDSA",namedCurve:"P-256"},SG={name:"ECDSA",hash:"SHA-256"};
+let priv=null;
+const clip=async t=>{try{await navigator.clipboard.writeText(t)}catch(e){prompt("Copia:",t)}};
+$("gk").onclick=async()=>{
+  const k=await crypto.subtle.generateKey(EC,true,["sign","verify"]);
+  const pj=await crypto.subtle.exportKey("jwk",k.publicKey),sj=await crypto.subtle.exportKey("jwk",k.privateKey);
+  priv={kty:sj.kty,crv:sj.crv,x:sj.x,y:sj.y,d:sj.d};
+  $("pub").value=JSON.stringify({kty:"EC",crv:"P-256",x:pj.x,y:pj.y});$("kt").value=JSON.stringify(priv);
+};
+$("cpub").onclick=()=>clip($("pub").value);
+$("dpriv").onclick=()=>{if(!priv&&!$("kt").value)return alert("Genera prima le chiavi");
+  const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([$("kt").value||JSON.stringify(priv)],{type:"application/json"}));a.download="hourly-chiave-privata.json";a.click()};
+$("kf").onchange=async e=>{$("kt").value=await e.target.files[0].text()};
+const L=()=>{try{return JSON.parse(localStorage.getItem("hly-log")||"[]")}catch(e){return[]}};
+function paint(){$("log").innerHTML="<tr><th>Data</th><th>Azienda</th><th>Scadenza</th><th>Max</th><th>ID</th></tr>"+L().map(r=>"<tr><td>"+r.t.slice(0,10)+"</td><td>"+r.n.replace(/[<&]/g,"")+"</td><td>"+(r.e||"nessuna")+"</td><td>"+r.m+"</td><td>"+r.i+"</td></tr>").join("")}
+paint();
+$("mk").onclick=async()=>{
+  try{
+    const kj=JSON.parse($("kt").value);if(!kj.d)throw"Chiave privata mancante";
+    const key=await crypto.subtle.importKey("jwk",{...kj,ext:true},EC,false,["sign"]);
+    const n=$("nm").value.trim(),m=Math.max(1,+$("mx").value||1),e=$("nx").checked?"":$("ex").value;
+    if(!n)throw"Scrivi il nome dell'azienda";if(!$("nx").checked&&!e)throw"Scegli la scadenza o 'Senza scadenza'";
+    let id,k,d;const oldc=($("old").value.match(/HLY1\.[\w-]+\.[\w-]+\.[\w-]+/)||[])[0];
+    if(oldc){const a=oldc.split(".");const P=JSON.parse(TD.decode(unb(a[1])));id=P.i;k=P.k;d=a[3]}
+    else{const ck=await crypto.subtle.generateKey(EC,true,["sign","verify"]),cj=await crypto.subtle.exportKey("jwk",ck.privateKey);
+      id=b64(crypto.getRandomValues(new Uint8Array(6)));k={x:cj.x,y:cj.y};d=cj.d}
+    const p=b64(TE.encode(JSON.stringify({v:1,i:id,n,e,m,k})));
+    const sig=b64(new Uint8Array(await crypto.subtle.sign(SG,key,TE.encode(p))));
+    $("out").value="HLY1."+p+"."+sig+"."+d;
+    const lg=L();lg.push({t:new Date().toISOString(),n,e,m,i:id,r:!!oldc});localStorage.setItem("hly-log",JSON.stringify(lg));paint();
+  }catch(err){alert(typeof err==="string"?err:"Errore: controlla chiave e dati")}
+};
+$("cout").onclick=()=>clip($("out").value);
+$("exl").onclick=()=>{const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([JSON.stringify(L(),null,1)],{type:"application/json"}));a.download="registro-licenze.json";a.click()};
+</script></body></html>
